@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LocalStream</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <p class="eyebrow">LAN media share</p>
+        <h1>LocalStream</h1>
+        <p class="lede">
+          Pick a file, video, image, or folder on this PC. Open the share URL on your
+          phone — same Wi‑Fi, HTTP Range streaming for video.
+        </p>
+      </header>
+
+      <section class="panel" aria-labelledby="path-title">
+        <h2 id="path-title">Share a disk path</h2>
+        <p class="hint">Absolute path on this machine (best for large videos — no upload).</p>
+        <form id="path-form" class="stack">
+          <label class="field">
+            <span>Path</span>
+            <input
+              id="path-input"
+              name="path"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="D:\Videos\clip.mp4 or D:\Photos"
+              required
+            />
+          </label>
+          <button type="submit" class="btn primary">Create share link</button>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="upload-title">
+        <h2 id="upload-title">Or select files / folder</h2>
+        <p class="hint">Browser picker uploads into a temporary share (handy for smaller items).</p>
+        <form id="upload-form" class="stack">
+          <div class="row">
+            <label class="btn ghost file-btn">
+              Select files
+              <input id="file-input" type="file" multiple hidden />
+            </label>
+            <label class="btn ghost file-btn">
+              Select folder
+              <input id="folder-input" type="file" webkitdirectory directory multiple hidden />
+            </label>
+          </div>
+          <p id="selection" class="selection">Nothing selected</p>
+          <button type="submit" class="btn primary" id="upload-btn" disabled>Upload &amp; share</button>
+        </form>
+      </section>
+
+      <section class="panel result" id="result" hidden>
+        <h2>Share ready</h2>
+        <p id="result-name" class="result-name"></p>
+        <div class="urls" id="urls"></div>
+        <p class="hint">Use a LAN URL on your phone. Keep this PC awake and LocalStream running.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="active-title">
+        <div class="row between">
+          <h2 id="active-title">Active shares</h2>
+          <button type="button" class="btn ghost" id="refresh-btn">Refresh</button>
+        </div>
+        <ul id="share-list" class="share-list"></ul>
+      </section>
+
+      <footer class="foot">
+        <span id="net-info">Starting…</span>
+      </footer>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
