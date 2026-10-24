@@ -116,7 +116,14 @@ async function serveStatic(reqPath, res) {
   }
 }
 
-async function streamFile(filePath, req, res) {
+function contentDisposition(filePath, asAttachment) {
+  const base = path.basename(filePath).replace(/["\\]/g, "_");
+  const kind = asAttachment ? "attachment" : "inline";
+  const encoded = encodeURIComponent(path.basename(filePath)).replace(/['()]/g, escape);
+  return `${kind}; filename="${base}"; filename*=UTF-8''${encoded}`;
+}
+
+async function streamFile(filePath, req, res, { download = false } = {}) {
   let stat;
   try {
     stat = await fsp.stat(filePath);
@@ -132,6 +139,7 @@ async function streamFile(filePath, req, res) {
   const total = stat.size;
   const type = contentTypeFor(filePath);
   const range = req.headers.range;
+  const disposition = contentDisposition(filePath, download);
 
   if (range) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
@@ -154,6 +162,7 @@ async function streamFile(filePath, req, res) {
       "Accept-Ranges": "bytes",
       "Content-Length": chunkSize,
       "Content-Type": type,
+      "Content-Disposition": disposition,
       "Cache-Control": "no-cache",
     });
     fs.createReadStream(filePath, { start, end }).pipe(res);
@@ -163,6 +172,7 @@ async function streamFile(filePath, req, res) {
   res.writeHead(200, {
     "Content-Length": total,
     "Content-Type": type,
+    "Content-Disposition": disposition,
     "Accept-Ranges": "bytes",
     "Cache-Control": "no-cache",
   });
@@ -356,18 +366,90 @@ async function listDirectory(dirPath) {
   return items;
 }
 
+function wantsHtmlPage(req, url) {
+  if (url.searchParams.has("raw") || url.searchParams.has("dl") || url.searchParams.has("download")) {
+    return false;
+  }
+  if (req.headers.range) return false;
+  const accept = req.headers.accept || "";
+  return accept.includes("text/html");
+}
+
+function renderFilePage({ title, fileName, size, openHref, openWithHref, streamHref, parentHref }) {
+  const sizeLabel = size != null ? formatBytes(size) : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(fileName)} — LocalStream</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="browse">
+  <header class="browse-header">
+    <a class="brand" href="/">LocalStream</a>
+    <h1>${escapeHtml(title)}</h1>
+    <p class="path">${escapeHtml(fileName)}${sizeLabel ? ` · ${sizeLabel}` : ""}</p>
+  </header>
+  <main class="file-actions-page">
+    ${parentHref ? `<p class="up"><a href="${parentHref}">↑ Back</a></p>` : ""}
+    <p class="hint">Open in this browser, or download so your phone can pick a player / app.</p>
+    <div class="file-cta">
+      <a class="btn primary" href="${openHref}">Open</a>
+      <a class="btn ghost" href="${openWithHref}">Open with…</a>
+    </div>
+    <div class="url-card stream-card">
+      <span class="meta">Stream link (VLC / MX Player)</span>
+      <a id="stream-url" href="${streamHref}">${escapeHtml(streamHref)}</a>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="copy-stream">Copy link</button>
+      </div>
+    </div>
+  </main>
+  <script>
+    document.getElementById("copy-stream")?.addEventListener("click", async () => {
+      const url = document.getElementById("stream-url")?.href;
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        const btn = document.getElementById("copy-stream");
+        if (btn) { btn.textContent = "Copied"; setTimeout(() => { btn.textContent = "Copy link"; }, 1200); }
+      } catch {}
+    });
+  </script>
+</body>
+</html>`;
+}
+
 function renderBrowsePage({ shareId, relPath, title, items, parentHref, fileHrefPrefix }) {
   const rows = items
     .map((item) => {
       const href =
         item.type === "dir"
-          ? `${fileHrefPrefix}${encodeURI(item.name)}/`
-          : `${fileHrefPrefix}${encodeURI(item.name)}`;
+          ? `${fileHrefPrefix}${encodeURIComponent(item.name)}/`
+          : `${fileHrefPrefix}${encodeURIComponent(item.name)}`;
       const size =
         item.type === "file" && item.size != null
-          ? `<span class="meta">${formatBytes(item.size)}</span>`
-          : `<span class="meta">${item.type === "dir" ? "folder" : ""}</span>`;
-      return `<li><a href="${href}"><span class="name">${escapeHtml(item.name)}</span>${size}</a></li>`;
+          ? formatBytes(item.size)
+          : item.type === "dir"
+            ? "folder"
+            : "";
+      if (item.type === "dir") {
+        return `<li class="listing-row">
+  <a class="listing-main" href="${href}"><span class="name">${escapeHtml(item.name)}</span><span class="meta">${size}</span></a>
+</li>`;
+      }
+      const openWith = `${href}?dl=1`;
+      return `<li class="listing-row">
+  <div class="listing-main">
+    <span class="name">${escapeHtml(item.name)}</span>
+    <span class="meta">${size}</span>
+  </div>
+  <div class="listing-actions">
+    <a class="btn ghost tiny" href="${href}?raw=1">Open</a>
+    <a class="btn primary tiny" href="${openWith}">Open with…</a>
+  </div>
+</li>`;
     })
     .join("\n");
 
@@ -459,7 +541,40 @@ async function handleShare(req, res, url) {
     return;
   }
 
-  await streamFile(target, req, res);
+  const download =
+    url.searchParams.has("dl") ||
+    url.searchParams.has("download") ||
+    url.searchParams.get("open") === "download";
+
+  if (wantsHtmlPage(req, url)) {
+    const fileName = path.basename(target);
+    const basePath = url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+    const openHref = `${basePath}?raw=1`;
+    const openWithHref = `${basePath}?dl=1`;
+    const host = req.headers.host || `127.0.0.1:${PORT}`;
+    const proto = "http";
+    const streamHref = `${proto}://${host}${basePath}?raw=1`;
+    let parentHref = null;
+    if (relParts.length > 0) {
+      const parentRel = relParts.slice(0, -1).map(encodeURIComponent).join("/");
+      parentHref = `/s/${id}/${parentRel}${parentRel ? "/" : ""}`;
+    } else if (share.isDirectory) {
+      parentHref = `/s/${id}/`;
+    }
+    const html = renderFilePage({
+      title: share.name,
+      fileName,
+      size: stat.size,
+      openHref,
+      openWithHref,
+      streamHref,
+      parentHref,
+    });
+    sendText(res, 200, html, "text/html; charset=utf-8");
+    return;
+  }
+
+  await streamFile(target, req, res, { download });
 }
 
 const server = http.createServer(async (req, res) => {

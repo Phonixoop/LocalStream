@@ -286,23 +286,70 @@ input[type="text"]:focus {
   padding: 0;
 }
 
-.listing li a {
+.listing-row {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 0.2rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.listing-main {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.85rem 0.2rem;
-  border-bottom: 1px solid var(--line);
   color: var(--ink);
   text-decoration: none;
+  min-width: 0;
+}
+
+.listing-main .name {
+  overflow-wrap: anywhere;
+}
+
+.listing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.btn.tiny {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .listing .meta {
   color: var(--muted);
   font-size: 0.85rem;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .listing .empty {
   color: var(--muted);
   padding: 1rem 0;
+}
+
+.file-actions-page .hint {
+  margin: 0.75rem 0 1rem;
+}
+
+.file-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+}
+
+.file-cta .btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.stream-card .meta {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
